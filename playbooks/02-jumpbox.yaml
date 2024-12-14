@@ -25,6 +25,8 @@
           --timestamping \
           -P downloads \
           -i downloads.txt
+      register: wget
+      changed_when: "wget.rc != 0"
 
     - name: Install kubectl
       shell: |-
@@ -32,3 +34,11 @@
         chmod +x downloads/kubectl
         cp downloads/kubectl /usr/local/bin/
         kubectl version --client
+      register: kubectl
+      changed_when: "kubectl.rc != 0"
+
+    - name: Verify kubectl client versions
+      fail:
+        msg: "Kubectl version is wrong"
+      failed_when: "'Client Version: v1.31.2' not in kubectl.stdout or 'Kustomize Version: v5.4.2' not in kubectl.stdout"
+

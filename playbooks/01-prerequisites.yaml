@@ -4,18 +4,12 @@
     - name: Ping
       ansible.builtin.ping:
 
-    - name: Install command line utilities
-      apt:
-        name: [wget, curl, vim, openssl, git]
-        update_cache: true
+    - name: Capture machine specs
+      shell: uname -mov
+      register: uname
+      changed_when: "uname.rc != 0"
 
     - name: Verify system requirements
-      shell:
-        cmd: |-
-          UNAME=$(uname -mov)
-          if [[ $UNAME == *"#1 SMP Debian 6.1."* ]] && [[ $UNAME == *") aarch64 GNU/Linux"* ]]; then
-            exit 0
-          fi
-
-          exit 420
-        executable: /usr/bin/bash
+      fail:
+        msg: failed
+      failed_when: "'#1 SMP Debian 6.1.' not in uname.stdout or ') aarch64 GNU/Linux' not in uname.stdout"
