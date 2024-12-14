@@ -1,0 +1,34 @@
+- name: Prepare jump server
+  hosts: jumpserver
+  tasks:
+    - name: Ping
+      ansible.builtin.ping:
+
+    - name: Install command line utilities
+      apt:
+        name: [wget, curl, vim, openssl, git]
+        update_cache: true
+
+    - name: Sync github repository
+      git:
+        repo: "https://github.com/kelseyhightower/kubernetes-the-hard-way.git"
+        clone: true
+        dest: /root/kubernetes-the-hard-way
+        depth: 1
+        update: false
+
+    - name: Download binaries
+      shell: |-
+        cd /root/kubernetes-the-hard-way
+        wget -q --show-progress \
+          --https-only \
+          --timestamping \
+          -P downloads \
+          -i downloads.txt
+
+    - name: Install kubectl
+      shell: |-
+        cd /root/kubernetes-the-hard-way
+        chmod +x downloads/kubectl
+        cp downloads/kubectl /usr/local/bin/
+        kubectl version --client
