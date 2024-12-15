@@ -1,0 +1,60 @@
+- name: Provisioning a CA and Generating TLS Certificates
+  hosts: jump_server
+  tasks:
+    - name: Generate the CA configuration file, certificate, and private key
+      shell:
+        cmd: |-
+          openssl genrsa -out ca.key 4096
+          openssl req -x509 -new -sha512 -noenc \
+            -key ca.key -days 3653 \
+            -config ./kubernetes-the-hard-way/ca.conf \
+            -out ca.crt
+
+    - name: Verify CA files were created
+      shell:
+        cmd: |-
+          if [ ! -f "ca.crt" ]; then
+            exit 420
+          fi
+          if [ ! -f "ca.key" ]; then
+            exit 420
+          fi
+          exit 0
+
+    - name: Create client and server certificates
+      shell:
+        cmd: |-
+          openssl genrsa -out "{{ item }}.key" 4096
+
+          openssl req -new -key "{{ item }}.key" -sha256 \
+            -config "./kubernetes-the-hard-way/ca.conf" -section {{ item }} \
+            -out "{{ item }}.csr"
+          
+          openssl x509 -req -days 3653 -in "{{ item }}.csr" \
+            -copy_extensions copyall \
+            -sha256 -CA "ca.crt" \
+            -CAkey "ca.key" \
+            -CAcreateserial \
+            -out "{{ item }}.crt"
+      with_items: "{{ certs | split(',') }}"
+
+    - name: Distribute the Client and Server Certificates. Part I
+      shell:
+        cmd: |-
+          ssh root@{{ item }} mkdir /var/lib/kubelet/
+
+          scp ca.crt root@{{ item }}:/var/lib/kubelet/
+
+          scp {{ item }}.crt root@{{ item }}:/var/lib/kubelet/kubelet.crt
+
+          scp {{ item }}.key root@{{ item }}:/var/lib/kubelet/kubelet.key
+      with_items: "{{ groups['kube_workers'] }}"
+
+    - name: Distribute the Client and Server Certificates. Part II
+      shell:
+        cmd: |-
+          scp ca.key ca.crt \
+            kube-api-server.key kube-api-server.crt \
+            service-accounts.key service-accounts.crt \
+            root@{{ item }}:~/
+      with_items: "{{ groups['kube_control_plane'] }}"

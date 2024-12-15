@@ -17,7 +17,7 @@
       failed_when: "'{{ hostvars[inventory_hostname].fqdn }}' not in hostname.stdout"
 
 - name: Jump server host lookup table
-  hosts: jumpserver
+  hosts: jump_server
   tasks:
     - name: Create hosts file
       shell:

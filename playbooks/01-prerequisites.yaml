@@ -1,5 +1,5 @@
 - name: Prerequisites
-  hosts: [jumpserver, kube_workers, kube_control_plane]
+  hosts: [jump_server, kube_workers, kube_control_plane]
   tasks:
     - name: Capture machine specs
       shell: uname -mov

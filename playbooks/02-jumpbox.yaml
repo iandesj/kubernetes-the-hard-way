@@ -1,5 +1,5 @@
 - name: Prepare jump server
-  hosts: jumpserver
+  hosts: jump_server
   tasks:
     - name: Install command line utilities
       apt:
