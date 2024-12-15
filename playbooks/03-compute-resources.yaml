@@ -1,0 +1,76 @@
+- name: Configure hostnames
+  hosts: [kube_workers, kube_control_plane]
+  tasks:
+    - name: Set hostname
+      shell:
+        cmd: |-
+          sed -i 's/^127.0.1.1.*/127.0.1.1\t{{ hostvars[inventory_hostname].fqdn }} {{ inventory_hostname }}/' /etc/hosts
+          hostnamectl hostname {{ inventory_hostname }}
+
+    - name: Capture the hostname
+      shell: "hostname --fqdn"
+      register: hostname
+
+    - name: Verify the hostname
+      fail:
+        msg: "Hostname '{{ hostname.stdout }}' is incorrect"
+      failed_when: "'{{ hostvars[inventory_hostname].fqdn }}' not in hostname.stdout"
+
+- name: Jump server host lookup table
+  hosts: jumpserver
+  tasks:
+    - name: Create hosts file
+      shell:
+        cmd: |-
+          echo "" > /root/hosts
+          echo "# Kubernetes The Hard Way" >> /root/hosts
+
+    - name: Generate host entries
+      shell:
+        cmd: |-
+          echo "{{ hostvars[item].ansible_host }} {{ hostvars[item].fqdn }} {{ item }}" >> /root/hosts
+      with_items: "{{ groups['kube_cluster_nodes'] }}"
+
+    - name: Capture host entries
+      shell: "cat /root/hosts"
+      register: hosts
+
+    - name: Verify host entries
+      fail:
+        msg: "Hosts file is invalid"
+      failed_when:
+        # FIXME: Check for the full host file content, not just 'Kubernetes The Hard Way'
+        - "'# Kubernetes The Hard Way' not in hosts.stdout"
+        - "'kubernetes.local' not in hosts.stdout"
+
+    - name: Add /etc/hosts entries
+      shell:
+        cmd: |-
+          # Does the current /etc/hosts have an entry already?
+          if cat /etc/hosts | grep "{{ hostvars[item].ansible_host }} {{ hostvars[item].fqdn }} {{ item }}"; then
+            exit 0
+          else
+            echo "{{ hostvars[item].ansible_host }} {{ hostvars[item].fqdn }} {{ item }}" >> /etc/hosts
+          fi
+      with_items: "{{ groups['kube_cluster_nodes'] }}"
+
+    - name: Capture /etc/hosts
+      shell: "cat /etc/hosts"
+      register: etc_hosts
+
+    - name: Verify /etc/hosts
+      fail:
+        msg: "/etc/hosts file invalid"
+      failed_when:
+        - "hosts.stdout not in etc_hosts.stdout"
+
+    - name: Copy host entries to node /etc/hosts
+      shell:
+        cmd: |-
+          # Does the current /etc/hosts have an entry already?
+          if ssh -n root@{{ item }} "cat /etc/hosts" | grep "{{ hostvars[item].ansible_host }} {{ hostvars[item].fqdn }} {{ item }}"; then
+            exit 0
+          else
+            ssh -n root@{{ item }} "echo '{{ hostvars[item].ansible_host }} {{ hostvars[item].fqdn }} {{ item }}' >> /etc/hosts"
+          fi
+      with_items: "{{ groups['kube_cluster_nodes'] }}"

@@ -1,9 +1,6 @@
 - name: Prerequisites
   hosts: [jumpserver, kube_workers, kube_control_plane]
   tasks:
-    - name: Ping
-      ansible.builtin.ping:
-
     - name: Capture machine specs
       shell: uname -mov
       register: uname

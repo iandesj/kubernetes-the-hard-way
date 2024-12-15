@@ -1,9 +1,6 @@
 - name: Prepare jump server
   hosts: jumpserver
   tasks:
-    - name: Ping
-      ansible.builtin.ping:
-
     - name: Install command line utilities
       apt:
         name: [wget, curl, vim, openssl, git]
