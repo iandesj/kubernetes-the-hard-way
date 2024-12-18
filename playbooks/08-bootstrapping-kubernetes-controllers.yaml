@@ -1,0 +1,164 @@
+- name: Bootstrapping the Kubernetes Control Plane
+  hosts: jump_server
+  tasks:
+    - name: Prerequisites
+      shell:
+        cmd: |-
+          # Connect to the `jumpbox` and copy Kubernetes binaries and systemd unit files to the `server` instance
+          cd kubernetes-the-hard-way
+          scp \
+            downloads/kube-apiserver \
+            downloads/kube-controller-manager \
+            downloads/kube-scheduler \
+            downloads/kubectl \
+            units/kube-apiserver.service \
+            units/kube-controller-manager.service \
+            units/kube-scheduler.service \
+            configs/kube-scheduler.yaml \
+            configs/kube-apiserver-to-kubelet.yaml \
+            root@{{ item }}:~/
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Provision the Kubernetes Control Plane
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Create the Kubernetes configuration directory:
+          mkdir -p /etc/kubernetes/config
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Install the Kubernetes Controller binaries
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          {
+            chmod +x kube-apiserver \
+              kube-controller-manager \
+              kube-scheduler kubectl
+              
+            cp kube-apiserver \
+              kube-controller-manager \
+              kube-scheduler kubectl \
+              /usr/local/bin/
+          }
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Configure the Kubernetes API Server
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          {
+            mkdir -p /var/lib/kubernetes/
+
+            cp ca.crt ca.key \
+              kube-api-server.key kube-api-server.crt \
+              service-accounts.key service-accounts.crt \
+              encryption-config.yaml \
+              /var/lib/kubernetes/
+          }
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Create the `kube-apiserver.service` systemd unit file
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          cp kube-apiserver.service \
+            /etc/systemd/system/kube-apiserver.service
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Configure the Kubernetes Controller Manager
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Move the `kube-controller-manager` kubeconfig into place
+          cp kube-controller-manager.kubeconfig /var/lib/kubernetes/
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Create the `kube-controller-manager.service` systemd unit file
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Move the `kube-controller-manager` kubeconfig into place
+          cp kube-controller-manager.service /etc/systemd/system/
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Configure the Kubernetes Scheduler
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Move the `kube-scheduler` kubeconfig into place
+          cp kube-scheduler.kubeconfig /var/lib/kubernetes/
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Create the `kube-scheduler.yaml` configuration file
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          cp kube-scheduler.yaml /etc/kubernetes/config/
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Create the `kube-scheduler.service` systemd unit file
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          cp kube-scheduler.service /etc/systemd/system/
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Start the Controller Services
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          {
+            systemctl daemon-reload
+            
+            systemctl enable kube-apiserver \
+              kube-controller-manager kube-scheduler
+              
+            systemctl start kube-apiserver \
+              kube-controller-manager kube-scheduler
+          }
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Verify the control plane
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Allow up to 10 seconds for the Kubernetes API Server to fully initialize
+          sleep 20
+          # sed to ignore color in output
+          kubectl cluster-info --kubeconfig admin.kubeconfig | sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,2};?)?)?[mGK]//g"
+          EOF
+      register: cluster_info
+      failed_when: "'Kubernetes control plane is running at https://127.0.0.1:6443' not in cluster_info.stdout"
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+- name: RBAC for Kubelet Authorization
+  hosts: jump_server
+  tasks:
+    - name: Create the `system:kube-apiserver-to-kubelet` ClusterRole
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          kubectl apply -f kube-apiserver-to-kubelet.yaml --kubeconfig admin.kubeconfig
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Verify the control API authorization
+      shell:
+        cmd: |-
+          # Make a HTTP request for the Kubernetes version info
+          curl -k --cacert ca.crt https://server.kubernetes.local:6443/version
+      register: curl
+      failed_when:
+        - "'\"major\": \"1\",' not in curl.stdout"
+        - "'\"minor\": \"31\",' not in curl.stdout"

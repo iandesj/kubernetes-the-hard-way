@@ -18,7 +18,7 @@
           # Extract and install the etcd server and the etcdctl command line utility
           {
             tar -xvf etcd-v3.4.34-linux-arm64.tar.gz
-            mv etcd-v3.4.34-linux-arm64/etcd* /usr/local/bin/
+            cp etcd-v3.4.34-linux-arm64/etcd* /usr/local/bin/
           }
           EOF
       with_items: "{{ groups['kube_control_plane'] }}"
@@ -42,7 +42,7 @@
         cmd: |-
           ssh root@{{ item }} bash <<EOF
           # Create the etcd.service systemd unit file
-          mv etcd.service /etc/systemd/system/
+          cp etcd.service /etc/systemd/system/
 
           # Start the etcd Server
           {
