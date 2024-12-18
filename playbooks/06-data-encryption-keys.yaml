@@ -1,0 +1,13 @@
+- name: Generating the Data Encryption Config and Key
+  hosts: jump_server
+  tasks:
+    - name: Create the encryption-config.yaml encryption config file
+      shell:
+        cmd: |-
+          # Generate an encryption key
+          export ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
+          envsubst < kubernetes-the-hard-way/configs/encryption-config.yaml > encryption-config.yaml
+
+    - name: Copy the encryption-config.yaml encryption config file to each controller instance
+      shell: "scp encryption-config.yaml root@{{ item }}:~/"
+      with_items: "{{ groups['kube_control_plane'] }}"

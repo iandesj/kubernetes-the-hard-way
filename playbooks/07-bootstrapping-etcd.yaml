@@ -1,0 +1,64 @@
+- name: Bootstrapping the etcd Cluster
+  hosts: jump_server
+  tasks:
+    - name: Prerequisites
+      shell:
+        cmd: |-
+          # Copy etcd binaries and systemd unit files to the server instance
+          scp \
+            kubernetes-the-hard-way/downloads/etcd-v3.4.34-linux-arm64.tar.gz \
+            kubernetes-the-hard-way/units/etcd.service \
+            root@{{ item }}:~/
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Install the etcd Binaries
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Extract and install the etcd server and the etcdctl command line utility
+          {
+            tar -xvf etcd-v3.4.34-linux-arm64.tar.gz
+            mv etcd-v3.4.34-linux-arm64/etcd* /usr/local/bin/
+          }
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Configure the etcd Server
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Install the etcd Binaries
+          {
+            mkdir -p /etc/etcd /var/lib/etcd
+            chmod 700 /var/lib/etcd
+            cp ca.crt kube-api-server.key kube-api-server.crt \
+              /etc/etcd/
+          }
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Create the etcd.service systemd unit file and start the server
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          # Create the etcd.service systemd unit file
+          mv etcd.service /etc/systemd/system/
+
+          # Start the etcd Server
+          {
+            systemctl daemon-reload
+            systemctl enable etcd
+            systemctl start etcd
+          }
+          EOF
+      with_items: "{{ groups['kube_control_plane'] }}"
+
+    - name: Verify the etcd cluster members
+      shell:
+        cmd: |-
+          ssh root@{{ item }} bash <<EOF
+          etcdctl member list
+          EOF
+      register: etcd_members
+      failed_when: "'started, controller, http://127.0.0.1:2380, http://127.0.0.1:2379, false' not in etcd_members.stdout"
+      with_items: "{{ groups['kube_control_plane'] }}"
